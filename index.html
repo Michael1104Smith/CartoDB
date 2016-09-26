@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=utf-8">
+    <title>CartoDB + D3 Bubble Map</title>
+    <script src="http://d3js.org/d3.v3.min.js"></script>
+    <script src="http://libs.cartocdn.com/cartodb.js/v2/cartodb.js"></script>
+    <style type="text/css">
+
+    body{
+        background:white;
+    }
+    svg {
+      width: 960px;
+      height: 500px;
+      background: #4a8dcb;
+    }
+    svg:active {
+      cursor: move;
+      cursor: -moz-grabbing;
+      cursor: -webkit-grabbing;
+    }
+    .globe {
+      fill: #4a8dcb;
+    }
+    #first_layer path {
+      fill-opacity:0.8;
+      fill: #222;
+      stroke: #ddd;
+      stroke-width:0.5px;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    #second_layer circle {
+      cursor: pointer;
+      fill-opacity:1;
+      fill: white;
+      stroke-width:0.1px;
+      stroke:black;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .halo {
+      font-weight: 700;
+      fill: none;
+      stroke: white;
+      stroke-width:4px;
+      font-size: 14px; 
+    }
+    .text {
+      font-weight: 700;
+      fill: #777;
+      stroke: none;
+      stroke-width:0px;
+      font-size: 14px; 
+    }
+
+    </style>
+  </head>
+  <body>
+    <script type="text/javascript">
+
+    var first_layer = 'd3_world_borders';
+    var second_layer = 'd3_populated_places';
+
+    var sql = new cartodb.SQL({ user: 'viz2', format: 'geojson', dp: 5});
+
+    // Define our SVG element outside our SQL functions
+    var svg = d3.select("body")
+            .append("svg")
+            .call(d3.behavior.zoom()
+                .on("zoom", redraw))
+            .append("g");
+
+    // Our projection.
+    var xy = d3.geo.mercator().scale(5);
+        xy.scale(2500);
+        xy.center([40,30]);
+
+    svg.append("g").attr("id", "first_layer");
+    svg.append("g").attr("id", "second_layer");
+
+    var path = d3.geo.path();
+
+    sql.execute("SELECT ST_Simplify(the_geom,0.01) as the_geom FROM {{table_name}} WHERE the_geom IS NOT NULL", {table_name: first_layer})
+      .done(function(collection) {
+          svg.select("#first_layer")
+            .selectAll("path")
+              .data(collection.features)
+            .enter().append("path")
+            .attr("d", path.projection(xy));
+      })
+      .error(function(errors) {
+        // console.log('Errors! Oh no!')
+      });
+
+
+      sql.execute("SELECT the_geom, 4/sqrt(scalerank) as pop, adm1name as name FROM {{table_name}} WHERE the_geom IS NOT NULL AND pop_max > 10^5", {table_name: second_layer})
+        .done(function(collection) {
+
+        var label = svg.append("sgv:g")
+
+        svg.select("#second_layer")
+            .selectAll("path")
+            .data(collection.features)
+            .enter()
+            .append("circle")
+            .attr("r", function(d){ return d.properties.pop })
+          .attr("cy", function(){ return xy([0,Math.random()*180.0-90])[1]})
+          .attr("cx", function(){ return xy([Math.random()*360.0-180,0])[0]})
+          .attr("d", path.projection(xy))
+            .on("mousedown", function(t){
+                d3.selectAll("text").remove(); 
+              label.append("svg:text")
+                .attr("x", xy(t.geometry.coordinates)[0])
+                .attr("y", xy(t.geometry.coordinates)[1])
+                .attr("class", "halo")
+                .text(t.properties.name);
+              label.append("svg:text")
+                .attr("x", xy(t.geometry.coordinates)[0])
+                .attr("y", xy(t.geometry.coordinates)[1])
+                .attr("class", "text")
+                .text(t.properties.name);
+              })
+            .on("mouseout", function(){
+              })
+          .transition()
+          .attr("cy", function(d){ return xy(d.geometry.coordinates)[1] })
+          .attr("cx", function(d){ return xy(d.geometry.coordinates)[0] })
+          .duration(function(d){ return 800*d.properties.pop })
+          .delay(100) 
+        })
+        .error(function(errors) {
+          // console.log('Errors! Oh no!')
+        });
+
+    function redraw() {
+      svg.attr("transform", "translate(" + d3.event.translate + ")scale(" + d3.event.scale + ")");
+    }
+
+    </script>
+  </body>
+</html>
